@@ -344,11 +344,29 @@ if ($svc) {
 # --- Phase 5: Start Docker containers ----------------------
 Write-Header "Phase 5/7 : Starting Docker containers"
 
+# CRITICAL FIX: Remove any old containers from previous runs to avoid name conflicts
+Write-Step "Cleaning up any leftover containers from previous runs..."
+docker compose down --remove-orphans 2>$null | Out-Null
+# Force-remove by name in case docker-compose lost track
+docker rm -f realflow-mongo 2>$null | Out-Null
+docker rm -f realflow-backend 2>$null | Out-Null
+docker rm -f realflow-frontend 2>$null | Out-Null
+Write-OK "Cleanup done"
+
 Write-Step "Building images and starting containers (first time ~5-10 min)..."
 docker compose up -d --build
 if ($LASTEXITCODE -ne 0) {
-    Write-Err "docker compose failed. Check the output above."
-    exit 1
+    Write-Err "docker compose up failed. Trying one more cleanup + retry..."
+    docker compose down --volumes --remove-orphans 2>$null | Out-Null
+    docker rm -f realflow-mongo realflow-backend realflow-frontend 2>$null | Out-Null
+    Start-Sleep -Seconds 3
+    docker compose up -d --build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "docker compose still failing after cleanup. Check 'docker ps -a' and 'docker compose logs'."
+        $script:DockerFailed = $true
+    } else {
+        Write-OK "Retry succeeded"
+    }
 }
 
 Write-Step "Waiting for backend to become healthy..."

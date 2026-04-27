@@ -186,10 +186,22 @@ Write-Host "  Just select your domain ($Domain) and click 'Authorize'." -Foregro
 Write-Host "  Everything else is automatic." -ForegroundColor Yellow
 Write-Host ""
 
+$script:DockerFailed = $false
 & $setupScript -Domain $Domain -AdminEmail $AdminEmail -AdminPassword $securePwd
+$setupExitCode = $LASTEXITCODE
 
 # --- Final: show credentials -----------------------------------------------
-Write-Header "All done - RealFlow is LIVE!"
+if ($script:DockerFailed -or $setupExitCode -ne 0) {
+    Write-Header "SETUP HAD ERRORS - See above"
+    Write-Host ""
+    Write-Host "  The installer finished but Docker containers did not start properly." -ForegroundColor Yellow
+    Write-Host "  Your .env file is saved. Credentials below are still valid." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  TO FIX: Double-click FIX-AND-RESTART.bat in the same folder." -ForegroundColor Cyan
+    Write-Host ""
+} else {
+    Write-Header "All done - RealFlow is LIVE!"
+}
 Write-Host ""
 Write-Host "  Frontend : https://$Domain"                 -ForegroundColor Green
 Write-Host "  Backend  : https://api.$Domain"             -ForegroundColor Green
