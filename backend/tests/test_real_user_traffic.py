@@ -22,7 +22,7 @@ import zipfile
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://upload-inspect-demo.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://dev-mumair.preview.emergentagent.com").rstrip("/")
 
 TEST_EMAIL = "testuser@demo.com"
 TEST_PASSWORD = "test1234"

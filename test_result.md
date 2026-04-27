@@ -148,7 +148,7 @@ agent_communication:
   - agent: "main"
     message: |
       Backend running cleanly on :8001. MongoDB local. External preview URL:
-      https://check-staging.preview.emergentagent.com
+      https://dev-mumair.preview.emergentagent.com
       Admin: admin@trackmaster.local / admin123
       Please do a BACKEND-ONLY smoke test of the main tasks listed. No UI testing this round.
       Use REACT_APP_BACKEND_URL from /app/frontend/.env for external calls.

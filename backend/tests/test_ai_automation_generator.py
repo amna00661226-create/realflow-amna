@@ -11,7 +11,7 @@ import pytest
 import requests
 from PIL import Image, ImageDraw
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://upload-inspect-demo.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://dev-mumair.preview.emergentagent.com").rstrip("/")
 LOGIN_EMAIL = "testuser@demo.com"
 LOGIN_PASSWORD = "test1234"
 

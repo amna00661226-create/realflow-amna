@@ -27,7 +27,7 @@
   ],
   "success_rate": {"backend": "100% (11/11 in 7s)", "frontend": "n/a — backend-only review per request"},
   "test_credentials": "Admin: admin@trackmaster.local / admin123 via POST /api/admin/login (NOT /api/auth/login — see minor issue).",
-  "seed_data_creation": "None. Used existing admin user + existing link short_code=2735ad44 (id=baa47816-ccea-4b6b-98d1-c8fbfa6bd18b). Two tiny RUT jobs with dummy proxies were created for force-tracker wiring checks and then stopped; they do not materially alter click counts (proxies fail fast).",
+  "seed_data_creation": "None. Used existing admin user + existing link short_code=2735ad44 (id=dev-mumair). Two tiny RUT jobs with dummy proxies were created for force-tracker wiring checks and then stopped; they do not materially alter click counts (proxies fail fast).",
   "retest_needed": false,
   "main_agent_can_self_test": true,
   "context_for_next_testing_agent": "Re-run: cd /app/backend && python -m pytest tests/test_iteration13_rut_click_logging_and_force_tracker.py -v --tb=short. Requires MONGO_URL + REACT_APP_BACKEND_URL env (read from /app/backend/.env + /app/frontend/.env). Admin login is /api/admin/login — IMPORTANT, the regular /api/auth/login returns 401 for the env-seeded admin. The 3 DB-peek tests hit mongodb://localhost:27017 directly to verify click count + source fields — they pass as of this iteration (631 clicks). force_tracker_url is wired on POST /api/real-user-traffic/jobs; the 2 wiring tests create + immediately stop a RUT job (no real proxy traffic needed).",
