@@ -1,25 +1,32 @@
 # ============================================================================
-#  RealFlow - ONECLICK.ps1
-#  Fully automated installer - no prompts, pre-filled values.
-#  Called by REALFLOW-1-CLICK-DEPLOY.bat via `irm | iex`.
+#  RealFlow - ONECLICK.ps1  (LOCAL FOLDER VERSION)
 #
-#  Inputs (from environment variables set by the .bat):
-#     REALFLOW_DOMAIN        e.g. realflow.online
-#     REALFLOW_ADMIN_EMAIL   e.g. admin@realflow.online
-#     REALFLOW_GITHUB_OWNER  GitHub account that hosts the repo
-#     REALFLOW_GITHUB_REPO   Repo name
-#     REALFLOW_BRANCH        branch to clone (default: main)
+#  Usage: invoked by REALFLOW-1-CLICK-DEPLOY.bat from the SAME folder
+#         where this script lives (extracted from GitHub ZIP).
 #
-#  What this does (everything automatic):
+#  Pre-filled values - no prompts:
+#     Domain      : realflow.online
+#     Admin Email : admin@realflow.online
+#     Password    : auto-generated (random 16-char)
+#
+#  What this does:
 #     1. Installs Git, Docker Desktop, cloudflared (if missing) via winget
-#     2. Clones the repo to Desktop\realflow
-#     3. Creates .env with pre-filled domain/email + auto-random JWT/Postback/Password
-#     4. Shows the auto-generated admin password at the end (save it!)
-#     5. Runs deployment/home-pc/setup.ps1 with those pre-filled values
+#     2. Makes sure Docker engine is running
+#     3. Generates a strong random admin password
+#     4. Runs deployment/home-pc/setup.ps1 with those values
+#     5. Shows credentials + saves them to Desktop\realflow-LOGIN.txt
 # ============================================================================
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+
+# -- Hard-coded pre-filled values (customize here if you fork) ---------------
+$Domain     = "realflow.online"
+$AdminEmail = "admin@realflow.online"
+
+# -- Where we are (the extracted project folder) -----------------------------
+$ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $ProjectRoot
 
 function Write-Header($text) {
     Write-Host ""
@@ -32,42 +39,45 @@ function Write-Step($t) { Write-Host "  [>] $t"  -ForegroundColor White }
 function Write-Err($t)  { Write-Host "  [X] $t"  -ForegroundColor Red }
 function Write-Skip($t) { Write-Host "  [=] $t (already present)" -ForegroundColor DarkGray }
 
-# --- Read pre-filled values from env ----------------------------------------
-$Domain      = if ($env:REALFLOW_DOMAIN)       { $env:REALFLOW_DOMAIN }       else { "realflow.online" }
-$AdminEmail  = if ($env:REALFLOW_ADMIN_EMAIL)  { $env:REALFLOW_ADMIN_EMAIL }  else { "admin@$Domain" }
-$Owner       = if ($env:REALFLOW_GITHUB_OWNER) { $env:REALFLOW_GITHUB_OWNER } else { "amna00661226-create" }
-$Repo        = if ($env:REALFLOW_GITHUB_REPO)  { $env:REALFLOW_GITHUB_REPO }  else { "realflow-amna" }
-$Branch      = if ($env:REALFLOW_BRANCH)       { $env:REALFLOW_BRANCH }       else { "main" }
-$CloneDir    = Join-Path $env:USERPROFILE "Desktop\realflow"
-$RepoUrl     = "https://github.com/$Owner/$Repo.git"
-
-Write-Header "RealFlow - ONE CLICK DEPLOY"
-Write-Host "  Domain       : $Domain"              -ForegroundColor DarkGray
-Write-Host "  Admin email  : $AdminEmail"          -ForegroundColor DarkGray
-Write-Host "  GitHub repo  : $RepoUrl"             -ForegroundColor DarkGray
-Write-Host "  Clone to     : $CloneDir"            -ForegroundColor DarkGray
+Write-Header "RealFlow - ONE CLICK DEPLOY (from local folder)"
+Write-Host "  Project folder : $ProjectRoot" -ForegroundColor DarkGray
+Write-Host "  Domain         : $Domain"      -ForegroundColor DarkGray
+Write-Host "  Admin email    : $AdminEmail"  -ForegroundColor DarkGray
 Write-Host ""
 
 # --- Admin check ------------------------------------------------------------
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Err "Not running as Administrator. Relaunch the .bat file using 'Run as administrator'."
+    Write-Err "Not running as Administrator."
+    Write-Host "  Close this window, right-click REALFLOW-1-CLICK-DEPLOY.bat -> Run as administrator." -ForegroundColor Yellow
     Read-Host "Press ENTER to exit"
     exit 1
 }
 Write-OK "Running as Administrator"
 
-# --- Phase 1: Install prerequisites via winget ------------------------------
-Write-Header "Phase 1/4 : Prerequisites (Git, Docker Desktop, cloudflared)"
+# --- Sanity check: make sure this is the right folder ----------------------
+foreach ($required in @("docker-compose.yml", "backend", "frontend", "deployment\home-pc\setup.ps1")) {
+    if (-not (Test-Path (Join-Path $ProjectRoot $required))) {
+        Write-Err "Missing: $required"
+        Write-Host "  This .bat must sit inside the extracted RealFlow project folder." -ForegroundColor Yellow
+        Read-Host "Press ENTER to exit"
+        exit 1
+    }
+}
+Write-OK "Project folder structure verified"
+
+# --- Phase 1: Install prerequisites ----------------------------------------
+Write-Header "Phase 1/3 : Prerequisites (Git, Docker Desktop, cloudflared)"
 
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    Write-Err "winget is missing. Install 'App Installer' from Microsoft Store, then rerun."
+    Write-Err "winget is missing."
+    Write-Host "  Install 'App Installer' from Microsoft Store first, then rerun." -ForegroundColor Yellow
     Read-Host "Press ENTER to exit"
     exit 1
 }
 Write-OK "winget available"
 
-# 1.1 Git
+# 1.1 Git (not strictly needed since we're using local files, but setup.ps1 may expect it)
 if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Skip "Git"
 } else {
@@ -87,7 +97,7 @@ if (Test-Path $dockerExe) {
     Write-OK "Docker Desktop installed"
     Write-Host ""
     Write-Host "  !! IMPORTANT: Docker Desktop was just installed." -ForegroundColor Yellow
-    Write-Host "  !! Please REBOOT your PC, then double-click this .bat again to finish." -ForegroundColor Yellow
+    Write-Host "  !! Please REBOOT your PC, then double-click REALFLOW-1-CLICK-DEPLOY.bat again." -ForegroundColor Yellow
     Write-Host ""
     Read-Host "Press ENTER to exit (reboot required)"
     exit 0
@@ -114,7 +124,7 @@ for ($i = 0; $i -lt 3; $i++) {
     Start-Sleep -Seconds 2
 }
 if (-not $dockerRunning) {
-    Write-Step "Starting Docker Desktop (can take up to 90 seconds)..."
+    Write-Step "Starting Docker Desktop (can take up to 2 minutes)..."
     if (Test-Path $dockerExe) { Start-Process -FilePath $dockerExe }
     $waited = 0
     while ($waited -lt 120) {
@@ -129,39 +139,19 @@ if (-not $dockerRunning) {
 }
 if (-not $dockerRunning) {
     Write-Err "Docker did not start within 2 minutes."
-    Write-Host "  Open Docker Desktop manually, wait for 'Engine running', then rerun the .bat." -ForegroundColor Yellow
+    Write-Host "  Open Docker Desktop manually, wait for green 'Engine running', then rerun the .bat." -ForegroundColor Yellow
     Read-Host "Press ENTER to exit"
     exit 1
 }
 Write-OK "Docker engine is running"
 
-# --- Phase 2: Clone repo ----------------------------------------------------
-Write-Header "Phase 2/4 : Getting the source code"
+# --- Phase 2: Generate admin password --------------------------------------
+Write-Header "Phase 2/3 : Configuration"
 
-if (Test-Path (Join-Path $CloneDir ".git")) {
-    Write-Step "Repo already cloned, pulling latest..."
-    Push-Location $CloneDir
-    git pull --quiet
-    Pop-Location
-    Write-OK "Repo up-to-date"
-} else {
-    Write-Step "Cloning $RepoUrl -> $CloneDir ..."
-    git clone --quiet --branch $Branch $RepoUrl $CloneDir
-    if (-not (Test-Path (Join-Path $CloneDir ".git"))) {
-        Write-Err "git clone failed. Check internet connection and repo visibility (must be public)."
-        Read-Host "Press ENTER to exit"
-        exit 1
-    }
-    Write-OK "Repo cloned"
-}
-
-# --- Phase 3: Auto-generate password + write .env ---------------------------
-Write-Header "Phase 3/4 : Configuration"
-
-$envFile = Join-Path $CloneDir ".env"
+$envFile = Join-Path $ProjectRoot ".env"
 $adminPassword = $null
 
-# Reuse existing password if .env already exists and is valid
+# Reuse existing password if .env already exists
 if (Test-Path $envFile) {
     $existing = @{}
     Get-Content $envFile | Where-Object { $_ -match "^[^#].*=" } | ForEach-Object {
@@ -176,69 +166,63 @@ if (Test-Path $envFile) {
 
 if (-not $adminPassword) {
     # Generate a strong random password (16 chars, alphanumeric + symbols)
-    Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
-    try {
-        $adminPassword = [System.Web.Security.Membership]::GeneratePassword(16, 3)
-    } catch {
-        # Fallback: manual random
-        $chars  = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%&*"
-        $bytes  = New-Object byte[] 16
-        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-        $adminPassword = -join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] })
-    }
+    $chars  = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#%&*"
+    $bytes  = New-Object byte[] 16
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $adminPassword = -join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] })
     Write-OK "Generated a strong random admin password"
 }
 
-# Pass values to setup.ps1 via SecureString
 $securePwd = ConvertTo-SecureString $adminPassword -AsPlainText -Force
 
-# --- Phase 4: Run the real setup --------------------------------------------
-Write-Header "Phase 4/4 : Running full setup (this takes 10-15 min)"
+# --- Phase 3: Run the real setup -------------------------------------------
+Write-Header "Phase 3/3 : Running full setup (10-15 min)"
 
-$setupScript = Join-Path $CloneDir "deployment\home-pc\setup.ps1"
-if (-not (Test-Path $setupScript)) {
-    Write-Err "setup.ps1 not found at $setupScript"
-    Write-Host "  The repo appears to be missing the deployment folder." -ForegroundColor Yellow
-    Read-Host "Press ENTER to exit"
-    exit 1
-}
+$setupScript = Join-Path $ProjectRoot "deployment\home-pc\setup.ps1"
 
 Write-Host ""
 Write-Host "  The next step will open your browser ONCE for Cloudflare login." -ForegroundColor Yellow
-Write-Host "  Just click 'Authorize' for your domain ($Domain)." -ForegroundColor Yellow
+Write-Host "  Just select your domain ($Domain) and click 'Authorize'." -ForegroundColor Yellow
 Write-Host "  Everything else is automatic." -ForegroundColor Yellow
 Write-Host ""
 
 & $setupScript -Domain $Domain -AdminEmail $AdminEmail -AdminPassword $securePwd
 
-# --- Final: show credentials ------------------------------------------------
+# --- Final: show credentials -----------------------------------------------
 Write-Header "All done - RealFlow is LIVE!"
 Write-Host ""
 Write-Host "  Frontend : https://$Domain"                 -ForegroundColor Green
 Write-Host "  Backend  : https://api.$Domain"             -ForegroundColor Green
 Write-Host "  Health   : https://api.$Domain/health"      -ForegroundColor Green
 Write-Host ""
-Write-Host "  ADMIN LOGIN (save these - you'll need them!):" -ForegroundColor Yellow
+Write-Host "  ADMIN LOGIN (save these!):"                 -ForegroundColor Yellow
 Write-Host "     Email    : $AdminEmail"                  -ForegroundColor Yellow
 Write-Host "     Password : $adminPassword"               -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  These credentials are also saved in:"       -ForegroundColor DarkGray
-Write-Host "     $CloneDir\.env"                          -ForegroundColor DarkGray
-Write-Host ""
 
-# Also write credentials to a handy file on the Desktop
+# Save credentials to Desktop for safety
 $credFile = Join-Path $env:USERPROFILE "Desktop\realflow-LOGIN.txt"
 $credContent = @"
 RealFlow - Admin Login
 =======================
-Frontend     : https://$Domain
-Backend      : https://api.$Domain
-Admin email  : $AdminEmail
-Admin pass   : $adminPassword
+Frontend      : https://$Domain
+Backend       : https://api.$Domain
+Health check  : https://api.$Domain/health
+Admin email   : $AdminEmail
+Admin pass    : $adminPassword
 
 Change this password anytime after first login from
 the Admin panel -> Settings -> Account.
+
+Project folder: $ProjectRoot
 "@
 Set-Content -Path $credFile -Value $credContent -Encoding UTF8
-Write-Host "  Credentials also saved to: $credFile" -ForegroundColor Green
+Write-Host "  Credentials also saved to:" -ForegroundColor Green
+Write-Host "    $credFile" -ForegroundColor Green
+Write-Host ""
+Write-Host "  Management scripts (double-click any):" -ForegroundColor DarkGray
+Write-Host "    $ProjectRoot\deployment\home-pc\start.bat" -ForegroundColor DarkGray
+Write-Host "    $ProjectRoot\deployment\home-pc\stop.bat" -ForegroundColor DarkGray
+Write-Host "    $ProjectRoot\deployment\home-pc\status.bat" -ForegroundColor DarkGray
+Write-Host "    $ProjectRoot\deployment\home-pc\logs.bat" -ForegroundColor DarkGray
 Write-Host ""
