@@ -25,7 +25,7 @@ param(
     [SecureString]$AdminPassword
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
 
 # --- Output helpers ----------------------------------------
@@ -345,22 +345,29 @@ if ($svc) {
 Write-Header "Phase 5/7 : Starting Docker containers"
 
 # CRITICAL FIX: Remove any old containers from previous runs to avoid name conflicts
+# Use $ErrorActionPreference=Continue so docker stderr (when container doesn't exist) doesn't abort the script
 Write-Step "Cleaning up any leftover containers from previous runs..."
-docker compose down --remove-orphans 2>$null | Out-Null
-# Force-remove by name in case docker-compose lost track
-docker rm -f realflow-mongo 2>$null | Out-Null
-docker rm -f realflow-backend 2>$null | Out-Null
-docker rm -f realflow-frontend 2>$null | Out-Null
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& docker compose down --remove-orphans 2>&1 | Out-Null
+& docker rm -f realflow-mongo 2>&1 | Out-Null
+& docker rm -f realflow-backend 2>&1 | Out-Null
+& docker rm -f realflow-frontend 2>&1 | Out-Null
+$ErrorActionPreference = $prevEAP
 Write-OK "Cleanup done"
 
 Write-Step "Building images and starting containers (first time ~5-10 min)..."
-docker compose up -d --build
+& docker compose up -d --build
 if ($LASTEXITCODE -ne 0) {
     Write-Err "docker compose up failed. Trying one more cleanup + retry..."
-    docker compose down --volumes --remove-orphans 2>$null | Out-Null
-    docker rm -f realflow-mongo realflow-backend realflow-frontend 2>$null | Out-Null
+    $ErrorActionPreference = 'Continue'
+    & docker compose down --volumes --remove-orphans 2>&1 | Out-Null
+    & docker rm -f realflow-mongo 2>&1 | Out-Null
+    & docker rm -f realflow-backend 2>&1 | Out-Null
+    & docker rm -f realflow-frontend 2>&1 | Out-Null
+    $ErrorActionPreference = $prevEAP
     Start-Sleep -Seconds 3
-    docker compose up -d --build
+    & docker compose up -d --build
     if ($LASTEXITCODE -ne 0) {
         Write-Err "docker compose still failing after cleanup. Check 'docker ps -a' and 'docker compose logs'."
         $script:DockerFailed = $true

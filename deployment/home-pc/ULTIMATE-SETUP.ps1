@@ -13,7 +13,9 @@ param(
     [switch]$NoPrompt = $false
 )
 
-$ErrorActionPreference = "Stop"
+# Use Continue (not Stop) so native command stderr (docker/cloudflared) doesn't abort the script.
+# Each critical command checks $LASTEXITCODE explicitly.
+$ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
 
 # --- Helpers ----------------------------------------------------------------
@@ -23,6 +25,16 @@ function W-Step($t) { Write-Host "  [>] $t" -F White }
 function W-Warn($t) { Write-Host "  [!] $t" -F Yellow }
 function W-Err($t) { Write-Host "  [X] $t" -F Red }
 function W-Skip($t) { Write-Host "  [=] $t" -F DarkGray }
+
+# Safe execution of native commands - prevents PowerShell from aborting
+# on stderr output (e.g. "no such container" is informational, not fatal)
+function Safe-Exec {
+    param([scriptblock]$Block)
+    $oldEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Block 2>&1 | Out-Null } catch {}
+    $ErrorActionPreference = $oldEAP
+}
 
 # --- Project root -----------------------------------------------------------
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -196,21 +208,31 @@ W-OK ".env backed up to $envBackup (safe across re-extracts)"
 W-H "Phase 3/7 : Pre-deployment cleanup (container + service conflicts)"
 
 W-Step "Removing stuck containers..."
-docker compose down --remove-orphans 2>$null | Out-Null
-docker rm -f realflow-mongo realflow-backend realflow-frontend 2>$null | Out-Null
+# Use Continue so docker stderr (when containers don't exist) doesn't abort the script
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& docker compose down --remove-orphans 2>&1 | Out-Null
+& docker rm -f realflow-mongo 2>&1 | Out-Null
+& docker rm -f realflow-backend 2>&1 | Out-Null
+& docker rm -f realflow-frontend 2>&1 | Out-Null
+$ErrorActionPreference = $prevEAP
 W-OK "Container cleanup done"
 
 # --- Phase 4: Docker compose up with --force-recreate ----------------------
 W-H "Phase 4/7 : Starting Docker containers"
 
 W-Step "Building + starting containers (first time ~5-10 min)..."
-docker compose up -d --build --force-recreate
+& docker compose up -d --build --force-recreate
 if ($LASTEXITCODE -ne 0) {
     W-Err "Container start failed. Running cleanup + retry..."
-    docker compose down --volumes --remove-orphans 2>$null | Out-Null
-    docker rm -f realflow-mongo realflow-backend realflow-frontend 2>$null | Out-Null
+    $ErrorActionPreference = 'Continue'
+    & docker compose down --volumes --remove-orphans 2>&1 | Out-Null
+    & docker rm -f realflow-mongo 2>&1 | Out-Null
+    & docker rm -f realflow-backend 2>&1 | Out-Null
+    & docker rm -f realflow-frontend 2>&1 | Out-Null
+    $ErrorActionPreference = $prevEAP
     Start-Sleep -Seconds 3
-    docker compose up -d --build --force-recreate
+    & docker compose up -d --build --force-recreate
     if ($LASTEXITCODE -ne 0) {
         W-Err "Retry also failed. Check 'docker compose logs' for details."
         exit 1
@@ -236,8 +258,11 @@ W-H "Phase 5/7 : Admin user seed"
 
 W-Step "Ensuring admin exists with current .env password..."
 # Delete any existing admin, then recreate container so it seeds fresh
-docker exec realflow-mongo mongosh realflow --quiet --eval "db.users.deleteMany({email:'$($config.AdminEmail)'}); db.admin_users.deleteMany({})" 2>$null | Out-Null
-docker compose up -d --force-recreate backend 2>&1 | Out-Null
+$prevEAP2 = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& docker exec realflow-mongo mongosh realflow --quiet --eval "db.users.deleteMany({email:'$($config.AdminEmail)'}); db.admin_users.deleteMany({})" 2>&1 | Out-Null
+& docker compose up -d --force-recreate backend 2>&1 | Out-Null
+$ErrorActionPreference = $prevEAP2
 Start-Sleep -Seconds 20
 W-OK "Admin seeded with .env credentials"
 
@@ -301,11 +326,14 @@ W-OK "Tunnel config written"
 
 # Install service (with CRITICAL cleanup of stale registry/service)
 W-Step "Installing cloudflared as Windows service..."
-& cloudflared service uninstall 2>$null | Out-Null
-& sc.exe delete Cloudflared 2>$null | Out-Null
+$prevEAP3 = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& cloudflared service uninstall 2>&1 | Out-Null
+& sc.exe delete Cloudflared 2>&1 | Out-Null
 Remove-Item "HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\Cloudflared" -Recurse -Force -EA SilentlyContinue
 Start-Sleep -Seconds 2
 & cloudflared --config "$pdDir\config.yml" service install 2>&1 | Out-Null
+$ErrorActionPreference = $prevEAP3
 Start-Sleep -Seconds 3
 
 $svc = Get-Service Cloudflared -EA SilentlyContinue
