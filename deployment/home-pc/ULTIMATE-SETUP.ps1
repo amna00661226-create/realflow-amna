@@ -102,12 +102,23 @@ W-OK "Docker engine running"
 W-H "Phase 2/7 : Configuration"
 
 $envFile = Join-Path $ProjectRoot ".env"
+$envBackupDir = "C:\ProgramData\RealFlow"
+$envBackup = Join-Path $envBackupDir ".env"
+New-Item -ItemType Directory -Force -Path $envBackupDir | Out-Null
+
 $config = @{
     Domain = "realflow.online"
     AdminEmail = "admin@realflow.online"
     AdminPassword = ""
     JwtSecret = ""
     PostbackToken = ""
+}
+
+# Smart restore: if local .env missing but backup exists, restore it
+if (-not (Test-Path $envFile) -and (Test-Path $envBackup)) {
+    W-Step "Local .env missing - restoring from backup at $envBackup"
+    Copy-Item -Path $envBackup -Destination $envFile -Force
+    W-OK ".env restored from previous install"
 }
 
 if (Test-Path $envFile) {
@@ -175,6 +186,11 @@ FRONTEND_PORT=3000
 "@
 Set-Content -Path $envFile -Value $envContent -Encoding UTF8
 W-OK ".env written"
+
+# CRITICAL: Backup .env to safe location outside project folder
+# So next time user deletes/re-extracts the project, credentials are preserved
+Copy-Item -Path $envFile -Destination $envBackup -Force
+W-OK ".env backed up to $envBackup (safe across re-extracts)"
 
 # --- Phase 3: CRITICAL CLEANUP (avoids all the issues we hit) ---------------
 W-H "Phase 3/7 : Pre-deployment cleanup (container + service conflicts)"
