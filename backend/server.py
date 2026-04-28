@@ -198,6 +198,10 @@ async def get_all_click_ips_from_entire_database(force_refresh=False):
 
 app = FastAPI()
 
+# Increase multipart upload size limit (default 1MB -> 1GB) for large UA / proxy / data file uploads
+from starlette.formparsers import MultiPartParser
+MultiPartParser.max_part_size = 1024 * 1024 * 1024  # 1 GB per part (effectively unlimited for text)
+
 # Auto-detect environment and set API prefix accordingly
 # DigitalOcean strips /api prefix, Emergent preview needs it
 IS_DIGITALOCEAN = os.environ.get("DIGITALOCEAN_APP", "").lower() == "true"
